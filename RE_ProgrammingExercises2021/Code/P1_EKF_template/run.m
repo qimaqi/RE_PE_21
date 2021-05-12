@@ -48,15 +48,15 @@ end
 
 % Checks if only base MATLAB functions are used, and prints an error
 % otherwise
-[~, deps] = matlab.codetools.requiredFilesAndProducts('Estimator');
-depnames = {deps.Name}';
-if numel(depnames) > 1
-     depstring = sprintf('- %s\n', depnames{2:end});
-     error(['Your estimator implementation appears to depend on ' ...
-         'additional toolboxes. Following dependencies were found:\n%s' ...
-         'Please remove any functions that rely on additional toolboxes.'], ...
-         depstring);
-end
+%[~, deps] = matlab.codetools.requiredFilesAndProducts('Estimator');
+%depnames = {deps.Name}';
+%if numel(depnames) > 1
+%     depstring = sprintf('- %s\n', depnames{2:end});
+%     error(['Your estimator implementation appears to depend on ' ...
+%         'additional toolboxes. Following dependencies were found:\n%s' ...
+%         'Please remove any functions that rely on additional toolboxes.'], ...
+%         depstring);
+%end
 
 %% Simulation
 % The function 'Simulator' simulates the boat dynamics and generates

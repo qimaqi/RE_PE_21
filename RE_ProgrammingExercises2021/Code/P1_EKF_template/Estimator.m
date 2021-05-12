@@ -68,30 +68,30 @@ if (tm == 0)
     % Do the initialization of your estimator here!
     
     % initial state mean
-    posEst = ... % 1x2 matrix
-    linVelEst = ... % 1x2 matrix
-    oriEst = ... % 1x1 matrix
-    windEst = ... % 1x1 matrix
-    driftEst = ... % 1x1 matrix
+    posEst = [0,0]; % 1x2 matrix
+    linVelEst = [0,0]; % 1x2 matrix
+    oriEst = [0]; % 1x1 matrix
+    windEst = [0]; % 1x1 matrix
+    driftEst = [0]; % 1x1 matrix
     
     % initial state variance
-    posVar = ... % 1x2 matrix
-    linVelVar = ... % 1x2 matrix
-    oriVar = ... % 1x1 matrix
-    windVar = ... % 1x1 matrix
-    driftVar = ... % 1x1 matrix
+    posVar = [estConst.StartRadiusBound/4,estConst.StartRadiusBound/4]; % 1x2 matrix
+    linVelVar = [0,0];  % 1x2 matrix
+    oriVar = [(estConst.RotationStartBound)^2/3]; % 1x1 matrix
+    windVar =[(estConst.WindAngleStartBound)^2/3]; % 1x1 matrix
+    driftVar = [(estConst.GyroDriftStartBound)]; % 1x1 matrix
     
     % estimator variance init (initial posterior variance)
-    estState.Pm = ...
+    estState.Pm = posVar;
     % estimator state
-    estState.xm = ...
+    estState.xm = posEst;
     % time of last update
     estState.tm = tm;
 end
 
 %% Estimator iteration.
 % get time since last estimator update
-dt = ...
+dt = tm - estState.tm;
 estState.tm = tm; % update measurement update time
 
 % prior update
