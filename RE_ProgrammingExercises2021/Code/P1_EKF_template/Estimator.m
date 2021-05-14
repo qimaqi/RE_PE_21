@@ -75,144 +75,119 @@ if (tm == 0)
     driftEst = 0; % 1x1 matrix
 
     % initial state variance
-    posVar = [estConst.StartRadiusBound^2/4 estConst.StartRadiusBound^2/4];
     % 1x2 matrix %uniform disk distri. variance, see draft
+    posVar = [estConst.StartRadiusBound^2/4 estConst.StartRadiusBound^2/4];
     linVelVar = [0 0]; % 1x2 matrix
     oriVar = estConst.RotationStartBound^2/3; % 1x1 matrix
     windVar = estConst.WindAngleStartBound^2/3; % 1x1 matrix
     driftVar = 0; % 1x1 matrix
 
-    %initial random values
-    r_ini = random('Uniform',0,estConst.StartRadiusBound);
-    angle_ini = random('Uniform',0,2*pi);
-    px_ini = sqrt(r_ini)*cos(angle_ini);
-    py_ini = sqrt(r_ini)*sin(angle_ini);
-    phi_ini = random('Uniform',-estConst.RotationStartBound,-estConst.RotationStartBound);
-    rou_ini = random('Uniform',-estConst.WindAngleStartBound,-estConst.WindAngleStartBound);
-
     estState = struct;
     % estimator variance init (initial posterior variance)
     estState.Pm = diag([posVar,linVelVar,oriVar,windVar,driftVar]);
     % estimator state
-    estState.xm = [px_ini, py_ini, 0, 0, phi_ini, rou_ini, 0]';%follow the orders above
-    %disp(estState.xm);
+    estState.xm = [posEst, linVelEst, oriEst, windEst, driftEst]';%follow the orders above
     % time of last update
     estState.tm = tm;
 end
 
 %% Estimator iteration.
 % get time since last estimator update
-syms px py sx sy phi rou b
+px=0;py=0;sx=0;sy=0;phi=0;rou=0;b=0;
+wa=0;wb=0;wc=0;wg=0;wn=0;
+vd=0;vr=0;vp=0;vb=0;
 
-syms ut ur
-syms vd vr vp vb
-
-syms za zb zc zg zn
-syms wa wb wc wg wn
-
-%% state vectors input
 if tm==0
-    [ut, ur] = [0,0];
+    ut=0;ur=0; %no input
 else
     [ut, ur] = deal(actuate(1),actuate(2));
 end
-%[za, zb, zc, zg, zn] = deal(sense(1),sense(2),sense(3),sense(4),sense(5));
-V = [vd vr vp vb];
-X = [px py sx sy phi rou b];
-U = [ut ur];
-Z = [za zb zc zg zn];
-W = [wa wb wc wg wn];
-
-%% Process equations
-Dpx = sx;
-Dpy = sy;
-Dsx = cos(phi)*(tanh(ut)-const.dragCoefficientHydr*(sx^2+sy^2)*(1+vd))...
-    - const.dragCoefficientAir*(sx-const.windVel*cos(rou))...
-    *sqrt((sx-const.windVel*cos(rou))^2+(sy-const.windVel*sin(rou))^2);
-Dsy = sin(phi)*(tanh(ut)-const.dragCoefficientHydr*(sx^2+sy^2)*(1+vd))...
-    - const.dragCoefficientAir*(sy-const.windVel*sin(rou))...
-    *sqrt((sx-const.windVel*cos(rou))^2+(sy-const.windVel*sin(rou))^2);
-Dphi = const.rudderCoefficient*ur*(1+vr);
-Drou = vp;
-Db = vb;
-
-%% measurement equations
-za = sqrt((px-const.pos_radioA(1))^2+(py-const.pos_radioA(2))^2)+wa;
-zb = sqrt((px-const.pos_radioB(1))^2+(py-const.pos_radioB(2))^2)+wb;
-zc = sqrt((px-const.pos_radioC(1))^2+(py-const.pos_radioC(2))^2)+wc;
-zg = phi+b+wg;
-zn = phi+wn;
 
 %% jacobian matrices
-At = jacobian([Dpx,Dpy,Dsx,Dsy,Dphi,Drou,Db], X);
-% JacoU = jacobian([Dpx,Dpy,Dsx,Dsy,Dphi,Drou,Db], U)
-Lt = jacobian([Dpx,Dpy,Dsx,Dsy,Dphi,Drou,Db], V);
-Hk = jacobian([za zb zc zg zn], X);
-Mk = jacobian([za zb zc zg zn], W);
 % measurement noise variance
 R = diag([estConst.DistNoiseA,estConst.DistNoiseB,estConst.DistNoiseC,estConst.GyroNoise,estConst.CompassNoise]);
 % process noise variance
-Qsys= diag([const.DragNoise,const.RudderNoise,const.WindAngleNoise,const.GyroDriftNoise]);
+Qsys= diag([estConst.DragNoise,estConst.RudderNoise,estConst.WindAngleNoise,estConst.GyroDriftNoise]);
 
-%dt = ...
-% update measurement update time
+
+% update time
+dt = 0.1;
 estState.tm = tm; 
 
 %% prior update
-syms px(t) py(t) sx(t) sy(t) phi(t) rou(t) b(t)
-eqs = [diff(px(t),t) == sx,...
-       diff(py(t),t) == sy,...
-       diff(sx(t),t) == cos(phi)*(tanh(ut)-const.dragCoefficientHydr*(sx^2+sy^2)*(1+vd))...
-       - const.dragCoefficientAir*(sx-const.windVel*cos(rou))...
-       *sqrt((sx-const.windVel*cos(rou))^2+(sy-const.windVel*sin(rou))^2),...
-       diff(sx,t) == sin(phi)*(tanh(ut)-const.dragCoefficientHydr*(sx^2+sy^2)*(1+vd))...
-       - const.dragCoefficientAir*(sy-const.windVel*sin(rou))...
-       *sqrt((sx-const.windVel*cos(rou))^2+(sy-const.windVel*sin(rou))^2),...
-       diff(phi(t),t) == const.rudderCoefficient*ur*(1+vr),...
-       diff(rou(t),t) == vp,...
-       diff(b(t),t) == vb];
-vars = [px(t) py(t) sx(t) sy(t) phi(t) rou(t) b(t)];
+% mean
+% offline calculated function handle
 
-[M,F] = massMatrixForm(eqs,vars);
-M = odeFunction(M,vars);
-F = odeFunction(F,vars,vd,vr,vp,vb);
-vd=0;vr=0;vp=0;vb=0;
-F = @(t,Y) F(t,Y,vd,vr,vp,vb);
-[t_list,xp_list] = ode45(F,[tm*0.1 (tm+1)*0.1],estState.xm);
+ht = @(t,Y)[Y(3);Y(4);-cos(Y(5)).*(-tanh(ut)+Y(3).^2./1.0e+1+Y(4).^2./1.0e+1)+sqrt((cos(Y(6)).*(3.0./4.0)-Y(3)).^2+(sin(Y(6)).*(3.0./4.0)-Y(4)).^2).*(cos(Y(6)).*(9.0./2.0e+2)-Y(3).*(3.0./5.0e+1));-sin(Y(5)).*(-tanh(ut)+Y(3).^2./1.0e+1+Y(4).^2./1.0e+1)+(sin(Y(6)).*(9.0./2.0e+2)-Y(4).*(3.0./5.0e+1)).*sqrt((cos(Y(6)).*(3.0./4.0)-Y(3)).^2+(sin(Y(6)).*(3.0./4.0)-Y(4)).^2);ur.*2.0;0.0;0.0];
 
+[~,xp_list] = ode45(ht,[tm*dt (tm+1)*dt],estState.xm);
 xp=xp_list(end,:)';
 
+% variance
 % dot Psv = At*Psv+Psv*At.'+Lt*Qsys*Lt.';
 % assign values to system states
 [px, py, sx, sy, phi, rou, b] = deal(estState.xm(1),estState.xm(2),estState.xm(3),estState.xm(4),estState.xm(5),estState.xm(6),estState.xm(7));
-% obtain double from symbolic matrix
-Akt = double(subs(At));
-Qkt = double(subs(Lt*Qsys*Lt.'));
+
+At = [0, 0,                                                                                                                                                                                                                      1,                                                                                                                                                                                                                      0,                                                   0,                                                                                                                                                                                                                                                           0, 0;
+0, 0,                                                                                                                                                                                                                      0,                                                                                                                                                                                                                      1,                                                   0,                                                                                                                                                                                                                                                           0, 0;
+0, 0, - (3*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2))/50 - (sx*cos(phi)*(vd + 1))/5 - ((2*sx - (3*cos(rou))/2)*((3*sx)/50 - (9*cos(rou))/200))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)),                                                                    - (sy*cos(phi)*(vd + 1))/5 - (((3*sx)/50 - (9*cos(rou))/200)*(2*sy - (3*sin(rou))/2))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)), -sin(phi)*(tanh(ut) - (sx^2/10 + sy^2/10)*(vd + 1)), - (9*sin(rou)*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2))/200 - (((3*sx)/50 - (9*cos(rou))/200)*((3*sin(rou)*(sx - (3*cos(rou))/4))/2 - (3*cos(rou)*(sy - (3*sin(rou))/4))/2))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)), 0;
+0, 0,                                                                    - (sx*sin(phi)*(vd + 1))/5 - ((2*sx - (3*cos(rou))/2)*((3*sy)/50 - (9*sin(rou))/200))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)), - (3*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2))/50 - (sy*sin(phi)*(vd + 1))/5 - ((2*sy - (3*sin(rou))/2)*((3*sy)/50 - (9*sin(rou))/200))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)),  cos(phi)*(tanh(ut) - (sx^2/10 + sy^2/10)*(vd + 1)),   (9*cos(rou)*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2))/200 - (((3*sy)/50 - (9*sin(rou))/200)*((3*sin(rou)*(sx - (3*cos(rou))/4))/2 - (3*cos(rou)*(sy - (3*sin(rou))/4))/2))/(2*((sx - (3*cos(rou))/4)^2 + (sy - (3*sin(rou))/4)^2)^(1/2)), 0;
+0, 0,                                                                                                                                                                                                                      0,                                                                                                                                                                                                                      0,                                                   0,                                                                                                                                                                                                                                                           0, 0;
+0, 0,                                                                                                                                                                                                                      0,                                                                                                                                                                                                                      0,                                                   0,                                                                                                                                                                                                                                                           0, 0;
+0, 0,                                                                                                                                                                                                                      0,                                                                                                                                                                                                                      0,                                                   0,                                                                                                                                                                                                                                                           0, 0];
+
+Lt =[                       0,    0, 0, 0;
+                            0,    0, 0, 0;
+-cos(phi)*(sx^2/10 + sy^2/10),    0, 0, 0;
+-sin(phi)*(sx^2/10 + sy^2/10),    0, 0, 0;
+                            0, 2*ur, 0, 0;
+                            0,    0, 1, 0;
+                            0,    0, 0, 1];
+Qt = Lt*Qsys*Lt.';
+
 % feed to ode45
-[Tlist, Plist] = ode45(@(t,Ps)VarianceDE(t, Ps, Akt, Qkt), [tm*0.1 (tm+1)*0.1],estState.Pm);
+% ode function handle for matrix input
+function dPdt = VarianceDE(t, X, A, Q)
+    X = reshape(X, size(A));  % Convert from n^2-by-1 to n-by-n
+    dPdt = A*X + X*A.' + Q;   % Determine derivative
+    dPdt = dPdt(:);           % Convert from n-by-n to n^2-by-1
+end
+[~, Plist] = ode45(@(t,Ps)VarianceDE(t, Ps, At, Qt), [tm*dt (tm+1)*dt], estState.Pm);
 Pp=reshape(Plist(end,:),[7,7]);
 
 %% measurement update
-% assign xp(k) to symbolic
+% assign values to system states
 [px, py, sx, sy, phi, rou, b] = deal(xp(1),xp(2),xp(3),xp(4),xp(5),xp(6),xp(7));
-Hk = double(subs(Hk));
-Mk = double(subs(Mk));
-wa=0;wb=0;wc=0;wg=0;wn=0;
+
+Hk =[(2*px + 2000)/(2*((px + 1000)^2 + (py - 1000)^2)^(1/2)), (2*py - 2000)/(2*((px + 1000)^2 + (py - 1000)^2)^(1/2)), 0, 0, 0, 0, 0;
+         (2*px - 4000)/(2*((px - 2000)^2 + py^2)^(1/2)),                         py/((px - 2000)^2 + py^2)^(1/2), 0, 0, 0, 0, 0;
+                        px/((py - 2000)^2 + px^2)^(1/2),          (2*py - 4000)/(2*((py - 2000)^2 + px^2)^(1/2)), 0, 0, 0, 0, 0;
+                                                      0,                                                       0, 0, 0, 1, 0, 1;
+                                                      0,                                                       0, 0, 0, 1, 0, 0];
+
+Mk = eye(5);
+
+% measurement equations
+za = sqrt((px-estConst.pos_radioA(1))^2+(py-estConst.pos_radioA(2))^2)+wa;
+zb = sqrt((px-estConst.pos_radioB(1))^2+(py-estConst.pos_radioB(2))^2)+wb;
+zc = sqrt((px-estConst.pos_radioC(1))^2+(py-estConst.pos_radioC(2))^2)+wc;
+zg = phi+b+wg;
+zn = phi+wn;
+
 % our nonlinear prediction:hk(xp,0)
-hkxp = [double(subs(za)),double(subs(zb)),double(subs(zc)),double(subs(zg)),double(subs(zn))]';
+hkxp = [za zb zc zg zn]';
 % Kalman gain:
 Kk = Pp*Hk'/(Hk*Pp*Hk' + Mk*R*Mk');
 
-% give more trust to zc if possible
-if isinf(sense(3))
-    sense(3)=double(subs(zc));
-end
-
-%update mean
-%no measurement at initial step, use xp
+% update mean
+% no measurement at initial step, use xp
 if tm==0
     estState.xm = xp;
 else
+    % give more trust to zc if possible
+    if isinf(sense(3))
+        sense(3)=zc;
+    end
     estState.xm = xp + Kk*(sense' - hkxp);
 end
 
@@ -222,23 +197,16 @@ P_diag= diag(estState.Pm);
 %% Get resulting estimates and variances
 
 % Output quantities
-posEst = estState.xm(1:2);
-linVelEst = estState.xm(3:4);
+posEst = estState.xm(1:2)';    % 1x2 matrix
+linVelEst = estState.xm(3:4)';
 oriEst = estState.xm(5);
 windEst = estState.xm(6);
 driftEst = estState.xm(7);
 % 
-posVar = P_diag(1:2);    % 1x2 matrix
-linVelVar = P_diag(3:4); % 1x2 matrix
+posVar = P_diag(1:2)';    % 1x2 matrix
+linVelVar = P_diag(3:4)'; % 1x2 matrix
 oriVar = P_diag(5); 
 windVar = P_diag(6);
 driftVar = P_diag(7); 
 
-end
-
-%% ode function handle
-function dPdt = VarianceDE(t, X, A, Q)
-X = reshape(X, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
-dPdt = A*X + X*A.' + Q; %Determine derivative
-dPdt = dPdt(:); %Convert from "n"-by-"n" to "n^2"-by-1
 end
