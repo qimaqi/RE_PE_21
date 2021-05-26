@@ -70,21 +70,25 @@ if (km == 0)
     % uniform distri. inside a circle
     r = d * sqrt(rand(1,N_particles)); 
     theta = rand(1,N_particles) * 2 * pi;
-    
-    % choose a initial circle
-    center_seed = rand(1,N_particles);
-    centerX = zeros(1,N_particles);
-    centerY = zeros(1,N_particles);
 
+    center_seed = rand(1,N_particles);
+    centerX = zeros(1,10);
+    centerY = zeros(1,10);
+    
     for particle_index = 1:N_particles
         if center_seed(particle_index)<=0.5
-            centerX(particle_index) = pA(1);
-            centerY(particle_index) = pA(2);
+            centerX = pA(1) ;
+            centerY = pA(2) ;
         else
-            centerX(particle_index) = pB(1);
-            centerY(particle_index) = pB(2);
+            centerX = pB(1);
+            centerY = pB(2);
+            %disp('using pB');
+            %disp('using r');
+            %disp(r);
         end
     end
+    
+    
 
     xr = centerX + r .* cos(theta);
     yr = centerY + r .* sin(theta);
@@ -146,6 +150,12 @@ for particle_index = 1:N_particles
     lineseg = [lineseg_x_start(particle_index),lineseg_y_start(particle_index);
              lineseg_x_end(particle_index),lineseg_y_end(particle_index)];
     [in,~] = intersect(map_poly,lineseg);
+    if size(in,1)>=2
+        intersect_points_x(particle_index) = in(2,1);
+        intersect_points_y(particle_index) = in(2,2);
+    else
+        warning('Particle outside the map')
+    end
 
     if  isempty(in)                           % particle outside, no intersect
         intersect_points_x(particle_index) = Inf;
