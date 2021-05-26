@@ -52,7 +52,11 @@ function [postParticles] = Estimator(prevPostParticles, sens, act, estConst, km)
 % csferrazza@ethz.ch
 
 % Set number of particles:
-N_particles = 50; % obviously, you will need more particles than 10.
+N_particles = 150; % obviously, you will need more particles than 10.
+% persistent index_all_zero;
+% if(isempty(index_all_zero))
+%     index_all_zero=0;
+% end
 
 %% Mode 1: Initialization
 if (km == 0)
@@ -63,16 +67,23 @@ if (km == 0)
     phi_0 = estConst.phi_0;
     l = estConst.l;
     
-    r = d * sqrt(rand(1,N_particles));
+    % uniform distri. inside a circle
+    r = d * sqrt(rand(1,N_particles)); 
     theta = rand(1,N_particles) * 2 * pi;
+    
+    % choose a initial circle
+    center_seed = rand(1,N_particles);
+    centerX = zeros(1,N_particles);
+    centerY = zeros(1,N_particles);
 
-    center_seed = rand();
-    if center_seed<=0.5
-        centerX = repmat(pA(1),1,N_particles) ;
-        centerY = repmat(pA(2),1,N_particles) ;
-    else
-        centerX = repmat(pB(1),1,N_particles);
-        centerY = repmat(pB(2),1,N_particles);
+    for particle_index = 1:N_particles
+        if center_seed(particle_index)<=0.5
+            centerX(particle_index) = pA(1);
+            centerY(particle_index) = pA(2);
+        else
+            centerX(particle_index) = pB(1);
+            centerY(particle_index) = pB(2);
+        end
     end
 
     xr = centerX + r .* cos(theta);
@@ -81,10 +92,10 @@ if (km == 0)
     phi_r = -phi_0 + 2*phi_0*rand(1,N_particles);
     l_r = -l + 2*l*rand(1,N_particles);
     
-    postParticles.x_r = xr;  % 1xN_particles matrix
-    postParticles.y_r = yr; % 1xN_particles matrix
+    postParticles.x_r = xr;     % 1xN_particles matrix
+    postParticles.y_r = yr;     % 1xN_particles matrix
     postParticles.phi = phi_r ; % 1xN_particles matrix
-    postParticles.kappa = l_r; % 1xN_particles matrix
+    postParticles.kappa = l_r;  % 1xN_particles matrix
     
     % and leave the function
     return;
@@ -96,6 +107,8 @@ end % end init
 % Implement your estimator here!
 sigma_phi = estConst.sigma_phi;
 sigma_f = estConst.sigma_f;
+
+rng shuffle
 
 v_f = -sigma_f/2 + sigma_f*rand(1,N_particles);
 v_phi = -sigma_phi/2 + sigma_phi*rand(1,N_particles);
@@ -111,19 +124,21 @@ map_y =contour(:,2);
 epsilon = estConst.epsilon;
 
 % Prior Update:
+% according to process model
 x_r_p_hat = x_r_prev + (act(1)+v_f).*cos(phi_r_prev);
 y_r_p_hat = y_r_prev + (act(1)+v_f).*sin(phi_r_prev);
 phi_r_p_hat = phi_r_prev + act(2) + v_phi;
 kappa_r_p_hat = kappa_r_prev;
 
 % Posterior Update:
-
+% compute the distance to the intersection
 lineseg_x_start = x_r_p_hat;
 lineseg_y_start = y_r_p_hat;
 lineseg_x_end = lineseg_x_start + 10*cos(phi_r_p_hat);
 lineseg_y_end = lineseg_y_start + 10*sin(phi_r_p_hat);
 intersect_points_x = zeros(1,N_particles);
 intersect_points_y = zeros(1,N_particles);
+
 for particle_index = 1:N_particles
     map_x(8) = kappa_r_p_hat(particle_index);
     map_x(9) = kappa_r_p_hat(particle_index);
@@ -131,31 +146,55 @@ for particle_index = 1:N_particles
     lineseg = [lineseg_x_start(particle_index),lineseg_y_start(particle_index);
              lineseg_x_end(particle_index),lineseg_y_end(particle_index)];
     [in,~] = intersect(map_poly,lineseg);
-    intersect_points_x(particle_index) = in(2,1);
-    intersect_points_y(particle_index) = in(2,2);
 
+    if  isempty(in)                           % particle outside, no intersect
+        intersect_points_x(particle_index) = Inf;
+        intersect_points_y(particle_index) = Inf;
+    elseif in(1,1)==x_r_p_hat(particle_index) % particle inside the polyshape
+        intersect_points_x(particle_index) = in(2,1);
+        intersect_points_y(particle_index) = in(2,2);
+    else                                      % particle outside, with intersect
+        intersect_points_x(particle_index) = Inf;
+        intersect_points_y(particle_index) = Inf;
+        %warning('Particle outside the map')
+    end
     
 predict_distance = sqrt((x_r_p_hat-intersect_points_x).^2+(y_r_p_hat-intersect_points_y).^2);
 
 sense_repeat = repmat(sens,1,N_particles);
 error = sense_repeat - predict_distance;
 p_post = zeros(1,N_particles);
-% one possible bug
+
 for particle_index = 1:N_particles
-    if abs(error(particle_index))>=2*epsilon && abs(error(particle_index))<=3*epsilon
-        p_post(particle_index) = 1/(5*epsilon) - 2/(5*epsilon^2) * abs(2.5*epsilon - abs(error(particle_index)));
-    elseif abs(error(particle_index))<=2*epsilon
-        p_post(particle_index) =  2/(5*epsilon) -  1/(5*epsilon^2) * abs(error(particle_index));
-    end
+%     if abs(error(particle_index))>=2*epsilon && abs(error(particle_index))<=3*epsilon
+%         p_post(particle_index) = 1/(5*epsilon) - 2/(5*epsilon^2) * abs(2.5*epsilon - abs(error(particle_index)));
+%     elseif abs(error(particle_index))<=2*epsilon
+%         p_post(particle_index) =  2/(5*epsilon) -  1/(5*epsilon^2) * abs(error(particle_index));
+%     elseif abs(error(particle_index))>3*epsilon
+%         p_post(particle_index) = 1/(10*abs(error(particle_index)));
+%     end
+
+%     if abs(error(particle_index))>4*epsilon && abs(error(particle_index))<=6*epsilon
+%         p_post(particle_index) = 1/(10*epsilon) - 1/(10*epsilon^2) * abs(5*epsilon - abs(error(particle_index)));
+%     elseif abs(error(particle_index))<=4*epsilon
+%         p_post(particle_index) =  1/(5*epsilon) -  1/(20*epsilon^2) * abs(error(particle_index));
+%     elseif abs(error(particle_index))>6*epsilon
+%         p_post(particle_index) = 1/(10*abs(error(particle_index)));
+%         %p_post(particle_index) =0;
+%     end
+
+    p_post(particle_index) = 1/(2*pi*0.5)*exp(-(abs(error(particle_index))-0).^2/(2*0.5^2)); % test gaussian
 end
 
+% allocate weights
 if(sum(p_post) > 0)
-    p_post = p_post/sum(p_post);
+    p_post = p_post./sum(p_post);
 else
     p_post = ones(1,N_particles)*1/N_particles;
-    % warning('Particle weights were all zero')
+%   warning('Particle weights were all zero')
 end
 
+% resampling
 postCumSum = cumsum(p_post);
 x_m_hat = zeros(1,N_particles);
 y_m_hat = zeros(1,N_particles);
@@ -171,9 +210,11 @@ for i = 1:N_particles
     kappa_m_hat(i) = kappa_r_p_hat(ind);
 end
 
-postParticles.x_r = x_m_hat;
-postParticles.y_r = y_m_hat;
-postParticles.phi = phi_m_hat;
-postParticles.kappa = kappa_m_hat;
+K_tune=0.0001;
+
+postParticles.x_r = x_m_hat + sqrt(K_tune*(max(x_m_hat)-min(x_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+postParticles.y_r = y_m_hat + sqrt(K_tune*(max(y_m_hat)-min(y_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+postParticles.phi = phi_m_hat ;%+ sqrt(K_tune*(max(phi_m_hat)-min(phi_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+postParticles.kappa = kappa_m_hat + sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
 
 end % end estimator
