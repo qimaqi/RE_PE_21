@@ -88,14 +88,14 @@ if (tm == 0)
     % estimator state
     estState.xm = [posEst, linVelEst, oriEst, windEst, driftEst]';%follow the orders above
     % time of last update
-    estState.tm = tm;
+    estState.tm = -0.1;
 end
 
 %% Estimator iteration.
 % get time since last estimator update
-px=0;py=0;sx=0;sy=0;phi=0;rou=0;b=0;
+%px=0;py=0;sx=0;sy=0;phi=0;rou=0;b=0;
 wa=0;wb=0;wc=0;wg=0;wn=0;
-vd=0;vr=0;vp=0;vb=0;
+vd=0;%vr=0;vp=0;vb=0;
 
 if tm==0
     ut=0;ur=0; %no input
@@ -109,9 +109,8 @@ R = diag([estConst.DistNoiseA,estConst.DistNoiseB,estConst.DistNoiseC,estConst.G
 % process noise variance
 Qsys= diag([estConst.DragNoise,estConst.RudderNoise,estConst.WindAngleNoise,estConst.GyroDriftNoise]);
 
-
 % update time
-dt = 0.1;
+dt = tm - estState.tm;
 estState.tm = tm; 
 
 %% prior update
@@ -120,7 +119,7 @@ estState.tm = tm;
 
 ht = @(t,Y)[Y(3);Y(4);-cos(Y(5)).*(-tanh(ut)+Y(3).^2./1.0e+1+Y(4).^2./1.0e+1)+sqrt((cos(Y(6)).*(3.0./4.0)-Y(3)).^2+(sin(Y(6)).*(3.0./4.0)-Y(4)).^2).*(cos(Y(6)).*(9.0./2.0e+2)-Y(3).*(3.0./5.0e+1));-sin(Y(5)).*(-tanh(ut)+Y(3).^2./1.0e+1+Y(4).^2./1.0e+1)+(sin(Y(6)).*(9.0./2.0e+2)-Y(4).*(3.0./5.0e+1)).*sqrt((cos(Y(6)).*(3.0./4.0)-Y(3)).^2+(sin(Y(6)).*(3.0./4.0)-Y(4)).^2);ur.*2.0;0.0;0.0];
 
-[~,xp_list] = ode45(ht,[tm*dt (tm+1)*dt],estState.xm);
+[~,xp_list] = ode45(ht,[tm-dt tm],estState.xm);
 xp=xp_list(end,:)';
 
 % variance
@@ -147,17 +146,17 @@ Qt = Lt*Qsys*Lt.';
 
 % feed to ode45
 % ode function handle for matrix input
-function dPdt = VarianceDE(t, X, A, Q)
+function dPdt = VarianceDE(X, A, Q)
     X = reshape(X, size(A));  % Convert from n^2-by-1 to n-by-n
     dPdt = A*X + X*A.' + Q;   % Determine derivative
     dPdt = dPdt(:);           % Convert from n-by-n to n^2-by-1
 end
-[~, Plist] = ode45(@(t,Ps)VarianceDE(t, Ps, At, Qt), [tm*dt (tm+1)*dt], estState.Pm);
+[~, Plist] = ode45(@(t,Ps)VarianceDE(Ps, At, Qt), [tm-dt tm], estState.Pm);
 Pp=reshape(Plist(end,:),[7,7]);
 
 %% measurement update
 % assign values to system states
-[px, py, sx, sy, phi, rou, b] = deal(xp(1),xp(2),xp(3),xp(4),xp(5),xp(6),xp(7));
+[px, py, ~, ~, phi, ~, b] = deal(xp(1),xp(2),xp(3),xp(4),xp(5),xp(6),xp(7));
 
 Hk =[(2*px + 2000)/(2*((px + 1000)^2 + (py - 1000)^2)^(1/2)), (2*py - 2000)/(2*((px + 1000)^2 + (py - 1000)^2)^(1/2)), 0, 0, 0, 0, 0;
          (2*px - 4000)/(2*((px - 2000)^2 + py^2)^(1/2)),                         py/((px - 2000)^2 + py^2)^(1/2), 0, 0, 0, 0, 0;
@@ -176,6 +175,7 @@ zn = phi+wn;
 
 % our nonlinear prediction:hk(xp,0)
 hkxp = [za zb zc zg zn]';
+
 % Kalman gain:
 Kk = Pp*Hk'/(Hk*Pp*Hk' + Mk*R*Mk');
 
@@ -186,7 +186,15 @@ if tm==0
 else
     % give more trust to zc if possible
     if isinf(sense(3))
-        sense(3)=zc;
+        %sense(3)=zc; %test here
+        Hk(3,:) = [];
+        Mk(3,:) = [];
+        Mk(:,3) = [];
+        R(3,:) = [];
+        R(:,3) = [];
+        sense(3) = [];
+        hkxp(3) = [];
+        Kk = Pp*Hk'/(Hk*Pp*Hk' + Mk*R*Mk');
     end
     estState.xm = xp + Kk*(sense' - hkxp);
 end
