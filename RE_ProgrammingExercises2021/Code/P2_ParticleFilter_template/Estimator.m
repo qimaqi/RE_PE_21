@@ -52,15 +52,12 @@ function [postParticles] = Estimator(prevPostParticles, sens, act, estConst, km)
 % csferrazza@ethz.ch
 
 % Set number of particles:
-N_particles = 150; % obviously, you will need more particles than 10.
-% persistent index_all_zero;
-% if(isempty(index_all_zero))
-%     index_all_zero=0;
-% end
+N_particles = 2000;
 
 %% Mode 1: Initialization
+% robustness evaluation will vary d, l and epsilon
 if (km == 0)
-    % Do the initialization of your estimator here!
+    % initialization of estimator
     pA = estConst.pA;
     pB = estConst.pB;
     d = estConst.d;
@@ -97,14 +94,13 @@ if (km == 0)
     postParticles.phi = phi_r ; % 1xN_particles matrix
     postParticles.kappa = l_r;  % 1xN_particles matrix
     
-    % and leave the function
     return;
 end % end init
 
 %% Mode 2: Estimator iteration.
 % If km > 0, we perform a regular update of the estimator.
 
-% Implement your estimator here!
+% Implement estimator
 sigma_phi = estConst.sigma_phi;
 sigma_f = estConst.sigma_f;
 
@@ -119,8 +115,6 @@ phi_r_prev = prevPostParticles.phi;
 kappa_r_prev = prevPostParticles.kappa;
 
 contour = estConst.contour;
-map_x =contour(:,1);
-map_y =contour(:,2);
 epsilon = estConst.epsilon;
 
 % Prior Update:
@@ -132,59 +126,32 @@ kappa_r_p_hat = kappa_r_prev;
 
 % Posterior Update:
 % compute the distance to the intersection
-lineseg_x_start = x_r_p_hat;
-lineseg_y_start = y_r_p_hat;
-lineseg_x_end = lineseg_x_start + 10*cos(phi_r_p_hat);
-lineseg_y_end = lineseg_y_start + 10*sin(phi_r_p_hat);
-intersect_points_x = zeros(1,N_particles);
-intersect_points_y = zeros(1,N_particles);
+distance_from_wall = zeros(1,N_particles);
 
-for particle_index = 1:N_particles
-    map_x(8) = kappa_r_p_hat(particle_index);
-    map_x(9) = kappa_r_p_hat(particle_index);
-    map_poly = polyshape(map_x,map_y);
-    lineseg = [lineseg_x_start(particle_index),lineseg_y_start(particle_index);
-             lineseg_x_end(particle_index),lineseg_y_end(particle_index)];
-    [in,~] = intersect(map_poly,lineseg);
-
-    if  isempty(in)                           % particle outside, no intersect
-        intersect_points_x(particle_index) = Inf;
-        intersect_points_y(particle_index) = Inf;
-    elseif in(1,1)==x_r_p_hat(particle_index) % particle inside the polyshape
-        intersect_points_x(particle_index) = in(2,1);
-        intersect_points_y(particle_index) = in(2,2);
-    else                                      % particle outside, with intersect
-        intersect_points_x(particle_index) = Inf;
-        intersect_points_y(particle_index) = Inf;
-        %warning('Particle outside the map')
-    end
-    
-predict_distance = sqrt((x_r_p_hat-intersect_points_x).^2+(y_r_p_hat-intersect_points_y).^2);
+for i = 1:N_particles
+    contour(8,1) = kappa_r_p_hat(i);
+    contour(9,1) = kappa_r_p_hat(i);
+    distance_from_wall(i) = compute_distance_from_wall(x_r_p_hat(i),y_r_p_hat(i),phi_r_p_hat(i),contour);
+end
 
 sense_repeat = repmat(sens,1,N_particles);
-error = sense_repeat - predict_distance;
+error = sense_repeat - distance_from_wall;
 p_post = zeros(1,N_particles);
 
 for particle_index = 1:N_particles
-%     if abs(error(particle_index))>=2*epsilon && abs(error(particle_index))<=3*epsilon
-%         p_post(particle_index) = 1/(5*epsilon) - 2/(5*epsilon^2) * abs(2.5*epsilon - abs(error(particle_index)));
-%     elseif abs(error(particle_index))<=2*epsilon
-%         p_post(particle_index) =  2/(5*epsilon) -  1/(5*epsilon^2) * abs(error(particle_index));
-%     elseif abs(error(particle_index))>3*epsilon
-%         p_post(particle_index) = 1/(10*abs(error(particle_index)));
-%     end
-
-%     if abs(error(particle_index))>4*epsilon && abs(error(particle_index))<=6*epsilon
-%         p_post(particle_index) = 1/(10*epsilon) - 1/(10*epsilon^2) * abs(5*epsilon - abs(error(particle_index)));
-%     elseif abs(error(particle_index))<=4*epsilon
-%         p_post(particle_index) =  1/(5*epsilon) -  1/(20*epsilon^2) * abs(error(particle_index));
-%     elseif abs(error(particle_index))>6*epsilon
-%         p_post(particle_index) = 1/(10*abs(error(particle_index)));
-%         %p_post(particle_index) =0;
-%     end
-
-    p_post(particle_index) = 1/(2*pi*0.5)*exp(-(abs(error(particle_index))-0).^2/(2*0.5^2)); % test gaussian
+    if abs(error(particle_index))>=2*epsilon && abs(error(particle_index))<=3*epsilon
+        p_post(particle_index) = 1/(5*epsilon) - 2/(5*epsilon^2) * abs(2.5*epsilon - abs(error(particle_index)));
+    elseif abs(error(particle_index))<=2*epsilon
+        p_post(particle_index) =  2/(5*epsilon) -  1/(5*epsilon^2) * abs(error(particle_index));
+    elseif abs(error(particle_index))>3*epsilon
+        normal_var=0.10;
+        p_post(particle_index) = 1/(2*pi*normal_var)*exp(-(abs(error(particle_index))-0).^2/(2*normal_var^2));
+        %p_post(particle_index)=0;
+    end
 end
+% if>3*epsilon, strategy 0: 0.2752, 7/50 outliers>0.5
+%                           0.2052, 5/50 outliers>0.5 (without update phi)
+%        strategy gaussian: 0.1802  4/50 outliers>0.5 (without update phi)  
 
 % allocate weights
 if(sum(p_post) > 0)
@@ -210,11 +177,43 @@ for i = 1:N_particles
     kappa_m_hat(i) = kappa_r_p_hat(ind);
 end
 
-K_tune=0.0001;
+K_tune=0.0005;
 
-postParticles.x_r = x_m_hat + sqrt(K_tune*(max(x_m_hat)-min(x_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
-postParticles.y_r = y_m_hat + sqrt(K_tune*(max(y_m_hat)-min(y_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
-postParticles.phi = phi_m_hat ;%+ sqrt(K_tune*(max(phi_m_hat)-min(phi_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
-postParticles.kappa = kappa_m_hat + sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+% add roughening
+% not much info from estimate to update kappa, causes outliers 
+[postParticles.x_r,postParticles.y_r,postParticles.phi,postParticles.kappa] = roughening_samples(x_m_hat,y_m_hat,phi_m_hat,kappa_m_hat,K_tune,N_particles);
 
 end % end estimator
+
+function distance = compute_distance_from_wall(x0,y0,phi,contour)
+    % parameters
+    length = size(contour,1);
+    alpha = zeros(1,length);
+    beta  = zeros(1,length);
+    % loop to the start
+    contour_aug = [contour; contour(1,:)];
+    % calculate by parameter equations
+    for i = 1:length
+        x1 = contour_aug(i,1);
+        y1 = contour_aug(i,2);
+        x2 = contour_aug(i+1,1);
+        y2 = contour_aug(i+1,2);
+        den = sin(phi)*(x2-x1)+cos(phi)*(y1-y2);
+        alpha(i) = (sin(phi)*(x2-x0)+cos(phi)*(y0-y2))/den;
+        beta(i)  = ((y2-y1)*(x0-x2)+(x1-x2)*(y0-y2))/den;
+    end
+    % determine the wall intersected
+    intersect_pos = alpha >= 0 & alpha <= 1 & beta >= 0;
+    distance_list = beta.*intersect_pos;
+    distance = min(distance_list(distance_list~=0));
+    if isempty(distance)
+        distance = inf;
+    end
+end
+
+function [x_r,y_r,phi,kappa]=roughening_samples(x_m_hat,y_m_hat,phi_m_hat,kappa_m_hat,K_tune,N_particles)
+    x_r = x_m_hat + sqrt(K_tune*(max(x_m_hat)-min(x_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    y_r = y_m_hat + sqrt(K_tune*(max(y_m_hat)-min(y_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    phi = phi_m_hat ;%+ sqrt(K_tune*(max(phi_m_hat)-min(phi_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    kappa = kappa_m_hat + sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+end
