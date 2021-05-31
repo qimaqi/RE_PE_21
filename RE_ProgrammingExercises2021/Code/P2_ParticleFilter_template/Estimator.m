@@ -137,6 +137,7 @@ end
 sense_repeat = repmat(sens,1,N_particles);
 error = sense_repeat - distance_from_wall;
 p_post = zeros(1,N_particles);
+p_post_gaussian = zeros(1,N_particles);
 
 for particle_index = 1:N_particles
     if abs(error(particle_index))>=2*epsilon && abs(error(particle_index))<=3*epsilon
@@ -144,10 +145,12 @@ for particle_index = 1:N_particles
     elseif abs(error(particle_index))<=2*epsilon
         p_post(particle_index) =  2/(5*epsilon) -  1/(5*epsilon^2) * abs(error(particle_index));
     %elseif abs(error(particle_index))>3*epsilon
-    %    normal_var=0.10;
+    %    
     %    p_post(particle_index) = normpdf(error(particle_index),0,normal_var);  %1/(2*pi*normal_var)*exp(-(abs(error(particle_index))-0).^2/(2*normal_var^2));
         %p_post(particle_index)=0;
     end
+    normal_var=0.10;
+    p_post_gaussian(particle_index) = 1/(2*pi*normal_var)*exp(-(abs(error(particle_index))-0).^2/(2*normal_var^2));
 end
 % if>3*epsilon, strategy 0: 0.2752, 7/50 outliers>0.5
 %                           0.2052, 5/50 outliers>0.5 (without update phi)
@@ -157,8 +160,8 @@ end
 if(sum(p_post) > 0)
     p_post = p_post./sum(p_post);
 else
-    normal_var=0.10;
-    p_post_gaussian = normpdf(error,0,normal_var);
+    %normal_var=0.10;
+    %p_post_gaussian = normpdf(error,0,normal_var);
     p_post = p_post_gaussian./sum(p_post_gaussian);
     %ones(1,N_particles)*1/N_particles;
 %   warning('Particle weights were all zero')
