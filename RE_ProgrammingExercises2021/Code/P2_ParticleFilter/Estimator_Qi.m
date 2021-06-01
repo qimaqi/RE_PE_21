@@ -141,7 +141,7 @@ p_post_gaussian = zeros(1,N_particles);
 
 for particle_index = 1:N_particles
     p_post(particle_index) = calculate_post(error(particle_index),epsilon);
-    normal_var=0.3 ;
+    normal_var=0.2 ;
     p_post_gaussian(particle_index) = 1/(2*pi*normal_var)*exp(-(abs(error(particle_index))-0).^2/(2*normal_var^2));
 end
 
@@ -150,25 +150,56 @@ if(sum(p_post) > 0)
 else  
     string = "Zero Probability after Measurement Update at " + int2str(km) + ". Resampling ...";
     disp(string);
-    % one time random resample kappa
-    resample_kappa = -estConst.l + 2*estConst.l*rand(1,N_particles); 
-    kappa_r_p_hat = resample_kappa;
-    distance_from_wall = zeros(1,N_particles);
-    for i = 1:N_particles
-        contour(8,1) = kappa_r_p_hat(i);
-        contour(9,1) = kappa_r_p_hat(i);
-        distance_from_wall(i) = compute_distance_from_wall(x_r_p_hat(i),y_r_p_hat(i),phi_r_p_hat(i),contour);
-    end
-    error = sense_repeat - distance_from_wall;
-    for particle_index = 1:N_particles
-        p_post(particle_index) = calculate_post(error(particle_index),epsilon);
+%%%%%%%%%%%%%%%%%%  strategy use gaussian for error %%%%%%%%%%%%%%%%%%%%%
+    %p_post = p_post_gaussian./sum(p_post_gaussian);
+%%%%%%%%%%%%%%%%%%  strategy use gaussian for error %%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%  strategy use roughing %%%%%%%%%%%%%%%%%%%%%
+    Resample_times = 5;
+    K_resample = 0.0003;
+    for i = 1:Resample_times
+        [x_r_resample,y_r_resample,phi_resample,kappa_resample] = re_samples(x_r_p_hat,y_r_p_hat,phi_r_p_hat,estConst.l,K_resample,N_particles);
+        temp_p_post = zeros(1,N_particles);
+        %best_p_post = zeros(1,N_particles);
+        for j = 1:N_particles
+            contour(8,1) = kappa_resample(j);
+            contour(9,1) = kappa_resample(j);
+            distance_from_wall = compute_distance_from_wall(x_r_resample(j),y_r_resample(j),phi_resample(j),contour);
+            error = sens - distance_from_wall;
+            temp_p_post(j) = calculate_post(error,epsilon); 
+        end
+        if (sum(temp_p_post))>(sum(p_post))
+            p_post = temp_p_post;
+        end
     end
     if(sum(p_post) > 0)
         p_post = p_post./sum(p_post);
     else
-         p_post = p_post_gaussian./sum(p_post_gaussian);
-         disp('kappa resample do not work');
-    end 
+        p_post = p_post_gaussian./sum(p_post_gaussian);
+        disp('reroughing do not work');
+    end  
+%%%%%%%%%%%%%%%%%%  end strategy use roughing %%%%%%%%%%%%%%%%%%%%% 
+    
+    
+    % one time random resample kappa
+%     resample_kappa = -estConst.l + 2*estConst.l*rand(1,N_particles); 
+%     kappa_r_p_hat = resample_kappa;
+%     distance_from_wall = zeros(1,N_particles);
+%     for i = 1:N_particles
+%         contour(8,1) = kappa_r_p_hat(i);
+%         contour(9,1) = kappa_r_p_hat(i);
+%         distance_from_wall(i) = compute_distance_from_wall(x_r_p_hat(i),y_r_p_hat(i),phi_r_p_hat(i),contour);
+%     end
+%     error = sense_repeat - distance_from_wall;
+%     for particle_index = 1:N_particles
+%         p_post(particle_index) = calculate_post(error(particle_index),epsilon);
+%     end
+%     if(sum(p_post) > 0)
+%         p_post = p_post./sum(p_post);
+%     else
+%          p_post = p_post_gaussian./sum(p_post_gaussian);
+%          disp('kappa resample do not work');
+%     end 
  
     
     %%% 10 times resample M %%%
@@ -192,7 +223,31 @@ else
 %          p_post = p_post_gaussian./sum(p_post_gaussian);
 %          %disp('kappa resample do not work');
 %     end
-    %%% 10 times resample M %%%
+%     %%% 10 times resample M %%%
+
+
+% when we drop this time but use last one?
+%     x_r_p_hat = x_r_prev;
+%     y_r_p_hat = y_r_prev;
+%     phi_r_p_hat = phi_r_prev;
+%     kappa_r_p_hat = kappa_r_prev-estConst.l + 2*estConst.l*rand(1,M);
+%     distance_from_wall = zeros(1,N_particles);
+%     for i = 1:N_particles
+%         contour(8,1) = kappa_r_p_hat(i);
+%         contour(9,1) = kappa_r_p_hat(i);
+%         distance_from_wall(i) = compute_distance_from_wall(x_r_p_hat(i),y_r_p_hat(i),phi_r_p_hat(i),contour);
+%     end
+%     error = sense_repeat - distance_from_wall;
+%     for particle_index = 1:N_particles
+%         p_post(particle_index) = calculate_post(error(particle_index),epsilon);
+%     end
+%     if(sum(p_post) > 0)
+%         p_post = p_post./sum(p_post);
+%     else
+%          p_post = p_post_gaussian./sum(p_post_gaussian);
+%          disp('kappa resample do not work');
+%     end 
+    % when we drop this time but use last one?
 end
        
             
@@ -249,7 +304,7 @@ function [x_r,y_r,phi,kappa]=roughening_samples(x_m_hat,y_m_hat,phi_m_hat,kappa_
     x_r = x_m_hat + sqrt(K_tune*(max(x_m_hat)-min(x_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
     y_r = y_m_hat + sqrt(K_tune*(max(y_m_hat)-min(y_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
     phi = phi_m_hat;% + sqrt(K_tune*(max(phi_m_hat)-min(phi_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
-    kappa = kappa_m_hat + 0.8*sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    kappa = kappa_m_hat + 0.5*sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
 end
 
 function p_post = calculate_post(error,epsilon)
@@ -261,4 +316,12 @@ function p_post = calculate_post(error,epsilon)
     else
         p_post = 0;
     end
+end
+
+function [x_r,y_r,phi,kappa]=re_samples(x_m_hat,y_m_hat,phi_m_hat,kappa_L,K_tune,N_particles)
+    %disp()
+    x_r = x_m_hat + sqrt(K_tune*(max(x_m_hat)-min(x_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    y_r = y_m_hat + sqrt(K_tune*(max(y_m_hat)-min(y_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    phi = phi_m_hat + sqrt(K_tune*(max(phi_m_hat)-min(phi_m_hat))*N_particles^(-1/4))*randn(1,N_particles);
+    kappa = -kappa_L + 2* kappa_L *rand(1,N_particles); %kappa_m_hat + 2*sqrt(K_tune*(max(kappa_m_hat)-min(kappa_m_hat))*N_particles^(-1/4))*randn(1,N_particles); %     -kappa_L + 2*kappa_L*rand(1,N_particles);    %
 end
